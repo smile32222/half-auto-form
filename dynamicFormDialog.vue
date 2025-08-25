@@ -1,7 +1,7 @@
 <!-- 子组件：DynamicFormDialog.vue -->
 <template>
-  <el-dialog :visible.sync="dialogVisible" :title="formTitle" :width="dialogWidth" append-to-body @close="handleClose">
-    <el-form ref="form" class="dynamic-form" :model="form" :rules="rules" :label-width="labelWidth">
+  <el-dialog v-if="dialogVisible" :visible.sync="dialogVisible" :title="formTitle" :width="dialogWidth" append-to-body @close="handleClose">
+    <el-form ref="form" class="dynamic-form" :class="{ 'grid grid-cols-2': inlineTag }" :model="form" :rules="rules" :label-width="labelWidth">
       <!-- 动态生成表单项 -->
       <template v-for="(field, index) in formConfig">
         <el-form-item
@@ -19,6 +19,7 @@
             :placeholder="field.placeholder"
             :maxlength="field.maxlength"
             :type="field.inputType"
+            :disabled="field.disabled"
             @change="field.onChange && field.onChange(form[field.prop])"
           />
 
@@ -28,6 +29,7 @@
             v-model="form[field.prop]"
             :clearable="field.clearable"
             :placeholder="field.placeholder"
+            :disabled="field.disabled"
             @change="handleSelectChange(field, $event)"
           >
             <el-option
@@ -46,6 +48,7 @@
             v-model="form[field.prop]"
             :placeholder="field.placeholder"
             :clearable="field.clearable"
+            :disabled="field.disabled"
             @change="(val) => handleCascadeChange(field, val)"
           >
             <el-option
@@ -53,18 +56,51 @@
               :key="opt[field.valueKey || 'value']"
               :label="opt[field.labelKey || 'label']"
               :value="opt[field.valueKey || 'value']"
-            />
+            ></el-option>
           </el-select>
+          <!-- <template v-else-if="field.type === 'cascade-select' && (!field.dependsOn || form[field.dependsOn])">
+            <span v-if="field.showBlank && getCascadeOptions(field).length == 0">{{ field.showBlankStr }}</span>
+            <el-select v-else v-model="form[field.prop]" :placeholder="field.placeholder" :clearable="field.clearable" @change="(val) => handleCascadeChange(field, val)">
+              <el-option
+                v-for="opt in getCascadeOptions(field)"
+                :key="opt[field.valueKey || 'value']"
+                :label="opt[field.labelKey || 'label']"
+                :value="opt[field.valueKey || 'value']"
+              />
+            </el-select>
+          </template> -->
 
           <!-- 文本域 -->
-          <el-input v-else-if="field.type === 'textarea'" type="textarea" v-model="form[field.prop]" :rows="field.rows || 3" :placeholder="field.placeholder" />
+          <el-input
+            v-else-if="field.type === 'textarea'"
+            :disabled="field.disabled"
+            type="textarea"
+            v-model="form[field.prop]"
+            :rows="field.rows || 3"
+            :placeholder="field.placeholder"
+          />
 
           <!-- 单选按钮（带边框样式） -->
-          <el-radio-group class="radio-customize-check" v-else-if="field.type === 'radio'" v-model="form[field.prop]" @change="field.onChange && field.onChange(form[field.prop])">
+          <el-radio-group
+            class="radio-customize-check"
+            :disabled="field.disabled"
+            v-else-if="field.type === 'radio'"
+            v-model="form[field.prop]"
+            @change="field.onChange && field.onChange(form[field.prop])"
+          >
             <el-radio v-for="item in field.options" :key="item.value" :label="item.value" border :disabled="item.disabled || checkDisabled(field, item)">
               {{ item.label }}
             </el-radio>
           </el-radio-group>
+
+          <div v-else-if="field.type === 'corn-select'">
+            <!-- {{ form}} -->
+            <cron @change="changeCron" v-model="form[field.prop]" i18n="cn"></cron>
+            <!-- <div style="display: flex; align-items: center; ">
+              <div style="width: 80px;">表达式：</div>
+              <el-input slot="reference" v-model="form[field.prop]" placeholder="请输入定时策略"></el-input>
+            </div> -->
+          </div>
 
           <!-- 纯文字 -->
           <div v-else-if="field.type === 'text'" style="font-size: 16px; font-weight: 400; color: #000">{{ field.text }}</div>
@@ -77,16 +113,24 @@
       <el-button v-if="extraButton && extraButton.visible" type="primary" plain :style="extraButtonStyle" @click="handleExtraButton">
         {{ extraButton.text || "测试" }}
       </el-button>
-      <el-button type="primary" :style="submitButtonStyle" @click="submitForm"> {{ submitButtonText }}</el-button>
+      <el-button type="primary" :style="submitButtonStyle" @click="submitForm">{{ submitButtonText }}</el-button>
     </div>
   </el-dialog>
 </template>
 
 <script>
+//局部引入
+import cron from "./vue-cron";
+
 export default {
   name: "DynamicFormDialog",
   props: {
     visible: {
+      type: Boolean,
+      default: false,
+    },
+    // 是否是行内表单
+    inlineTag: {
       type: Boolean,
       default: false,
     },
@@ -107,7 +151,7 @@ export default {
       default: "表单",
     },
 
-    // 表单标题
+    // 弹出框宽度
     dialogWidth: {
       type: String,
       default: "600px",
@@ -155,6 +199,8 @@ export default {
       }),
     },
   },
+
+  components: { cron },
   data() {
     return {
       form: {},
@@ -203,6 +249,11 @@ export default {
     },
   },
   methods: {
+    changeCron(val) {
+      console.log("changeCron", val);
+
+      this.cron = val;
+    },
     // 新增方法：判断字段是否显示
     shouldShowField(field) {
       if (typeof field.visibleOn === "function") {
@@ -247,21 +298,47 @@ export default {
     },
 
     // 返回当前层级（根/子）要渲染的 options
-    getCascadeOptions(field) {
-      if (!field.dependsOn) {
-        return field.options || [];
-      }
-      const key = `${field.prop}_${this.form[field.dependsOn]}`;
-      return this.cascadeOptionsCache.get(key) || [];
-    },
+    // getCascadeOptions(field) {
+    //   if (!field.dependsOn) {
+    //     return field.options || [];
+    //   }
+    //   const key = `${field.prop}_${this.form[field.dependsOn]}`;
+    //   return this.cascadeOptionsCache.get(key) || [];
+    // },
 
+    // 修改 getCascadeOptions 方法和 field.options 渲染逻辑，支持 pushSelectCurrent
+    getCascadeOptions(field) {
+      const key = field.dependsOn ? `${field.prop}_${this.form[field.dependsOn]}` : null;
+      let options = field.dependsOn ? this.cascadeOptionsCache.get(key) || [] : field.options || [];
+
+      // 如果 pushSelectCurrent 启用，当前值不在 options 中，并且选中值不是空，则注入一个临时选项
+      if (field.pushSelectCurrent && this.form[field.prop] != null && this.form[field.prop] !== undefined && this.form[field.prop] !== "") {
+        console.log(this.form, field.prop, "====");
+
+        const exists = options.some((opt) => opt[field.valueKey || "value"] === this.form[field.prop]);
+
+        if (!exists) {
+          options = [
+            {
+              [field.valueKey || "value"]: this.form[field.prop],
+              [field.labelKey || "label"]: field.selectCurrentStr || "当前选中项（缺失）",
+            },
+            ...options,
+          ];
+        }
+      }
+
+      return options;
+    },
     // 初始化表单值 + 根级预加载 + 如果是编辑态也同时预加载子级
     async initForm(data) {
-
       this.form = this.formConfig.reduce((acc, f) => {
         acc[f.prop] = data[f.prop] ?? f.defaultValue ?? "";
         return acc;
       }, {});
+      this.form.id = data.id || null; // 确保 id 也被初始化
+      // console.log(this.form,this.formConfig,'initthis.form');
+
       // 根级
       const roots = this.formConfig.filter((f) => f.type === "cascade-select" && !f.dependsOn && typeof f.fetchOptions === "function").map((f) => this.loadCascadeOptions(f, null));
       // 编辑态的子级
