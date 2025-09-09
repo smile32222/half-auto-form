@@ -157,7 +157,7 @@ export default {
       default: "600px",
     },
 
-    // labelWidth prop
+    // 总的label宽度
     labelWidth: {
       type: [String, Number],
       default: "100px",
@@ -297,15 +297,6 @@ export default {
       this.$forceUpdate();
     },
 
-    // 返回当前层级（根/子）要渲染的 options
-    // getCascadeOptions(field) {
-    //   if (!field.dependsOn) {
-    //     return field.options || [];
-    //   }
-    //   const key = `${field.prop}_${this.form[field.dependsOn]}`;
-    //   return this.cascadeOptionsCache.get(key) || [];
-    // },
-
     // 修改 getCascadeOptions 方法和 field.options 渲染逻辑，支持 pushSelectCurrent
     getCascadeOptions(field) {
       const key = field.dependsOn ? `${field.prop}_${this.form[field.dependsOn]}` : null;
@@ -337,7 +328,6 @@ export default {
         return acc;
       }, {});
       this.form.id = data.id || null; // 确保 id 也被初始化
-      // console.log(this.form,this.formConfig,'initthis.form');
 
       // 根级
       const roots = this.formConfig.filter((f) => f.type === "cascade-select" && !f.dependsOn && typeof f.fetchOptions === "function").map((f) => this.loadCascadeOptions(f, null));
